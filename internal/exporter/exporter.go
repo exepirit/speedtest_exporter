@@ -94,14 +94,16 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (e *Exporter) speedtest(testUUID string, ch chan<- prometheus.Metric) bool {
-	user, err := speedtest.FetchUserInfo()
+	speedtestClient := speedtest.New()
+
+	user, err := speedtestClient.FetchUserInfo()
 	if err != nil {
 		log.Errorf("could not fetch user information: %s", err.Error())
 		return false
 	}
 
 	// returns list of servers in distance order
-	serverList, err := speedtest.FetchServerList(user)
+	serverList, err := speedtestClient.FetchServers()
 	if err != nil {
 		log.Errorf("could not fetch server list: %s", err.Error())
 		return false
@@ -110,7 +112,7 @@ func (e *Exporter) speedtest(testUUID string, ch chan<- prometheus.Metric) bool 
 	var server *speedtest.Server
 
 	if e.serverID == -1 {
-		server = serverList.Servers[0]
+		server = serverList[0]
 	} else {
 		servers, err := serverList.FindServer([]int{e.serverID})
 		if err != nil {
@@ -134,7 +136,7 @@ func (e *Exporter) speedtest(testUUID string, ch chan<- prometheus.Metric) bool 
 }
 
 func pingTest(testUUID string, user *speedtest.User, server *speedtest.Server, ch chan<- prometheus.Metric) bool {
-	err := server.PingTest()
+	err := server.PingTest(nil)
 	if err != nil {
 		log.Errorf("failed to carry out ping test: %s", err.Error())
 		return false
@@ -159,14 +161,14 @@ func pingTest(testUUID string, user *speedtest.User, server *speedtest.Server, c
 }
 
 func downloadTest(testUUID string, user *speedtest.User, server *speedtest.Server, ch chan<- prometheus.Metric) bool {
-	err := server.DownloadTest(false)
+	err := server.DownloadTest()
 	if err != nil {
 		log.Errorf("failed to carry out download test: %s", err.Error())
 		return false
 	}
 
 	ch <- prometheus.MustNewConstMetric(
-		download, prometheus.GaugeValue, server.DLSpeed*1024*1024,
+		download, prometheus.GaugeValue, float64(server.DLSpeed)*8,
 		testUUID,
 		user.Lat,
 		user.Lon,
@@ -184,14 +186,14 @@ func downloadTest(testUUID string, user *speedtest.User, server *speedtest.Serve
 }
 
 func uploadTest(testUUID string, user *speedtest.User, server *speedtest.Server, ch chan<- prometheus.Metric) bool {
-	err := server.UploadTest(false)
+	err := server.UploadTest()
 	if err != nil {
 		log.Errorf("failed to carry out upload test: %s", err.Error())
 		return false
 	}
 
 	ch <- prometheus.MustNewConstMetric(
-		upload, prometheus.GaugeValue, server.ULSpeed*1024*1024,
+		upload, prometheus.GaugeValue, float64(server.ULSpeed)*8,
 		testUUID,
 		user.Lat,
 		user.Lon,

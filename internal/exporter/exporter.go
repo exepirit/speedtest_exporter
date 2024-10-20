@@ -1,7 +1,9 @@
 package exporter
 
 import (
+	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -102,30 +104,27 @@ func (e *Exporter) speedtest(testUUID string, ch chan<- prometheus.Metric) bool 
 		return false
 	}
 
-	// returns list of servers in distance order
-	serverList, err := speedtestClient.FetchServers()
-	if err != nil {
-		log.Errorf("could not fetch server list: %s", err.Error())
-		return false
-	}
-
 	var server *speedtest.Server
 
-	if e.serverID == -1 {
+	if e.serverID != -1 {
+		// returns list of servers in distance order
+		serverList, err := speedtestClient.FetchServers()
+		if err != nil {
+			log.Errorf("could not fetch server list: %s", err.Error())
+			return false
+		}
 		server = serverList[0]
 	} else {
-		servers, err := serverList.FindServer([]int{e.serverID})
-		if err != nil {
+		// returns a single requested server
+		server, err = speedtestClient.FetchServerByID(strconv.Itoa(e.serverID))
+		switch {
+		case errors.Is(err, speedtest.ErrServerNotFound):
+			log.Errorf("could not find your choosen server ID %d in the list of avaiable servers, server_fallback is not set so failing this test", e.serverID)
+			return false
+		case err != nil:
 			log.Error(err)
 			return false
 		}
-
-		if servers[0].ID != fmt.Sprintf("%d", e.serverID) && !e.serverFallback {
-			log.Errorf("could not find your choosen server ID %d in the list of avaiable servers, server_fallback is not set so failing this test", e.serverID)
-			return false
-		}
-
-		server = servers[0]
 	}
 
 	ok := pingTest(testUUID, user, server, ch)
